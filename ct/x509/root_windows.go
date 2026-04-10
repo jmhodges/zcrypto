@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+//go:build windows
+// +build windows
+
 package x509
 
 import (
@@ -109,7 +112,7 @@ func checkChainSSLServerPolicy(c *Certificate, chainCtx *syscall.CertChainContex
 	sslPara.Size = uint32(unsafe.Sizeof(*sslPara))
 
 	para := &syscall.CertChainPolicyPara{
-		ExtraPolicyPara: uintptr(unsafe.Pointer(sslPara)),
+		ExtraPolicyPara: unsafe.Pointer(sslPara),
 	}
 	para.Size = uint32(unsafe.Sizeof(*para))
 
