@@ -2534,3 +2534,60 @@ func testResumptionKeepsOCSPAndSCT(t *testing.T, ver uint16) {
 			serverConfig.Certificates[0].SignedCertificateTimestamps, ccs.SignedCertificateTimestamps)
 	}
 }
+
+func TestForceSuitesCipherSuiteInclusion(t *testing.T) {
+
+	t.Run("TLSv12GreaseReneg", func(t *testing.T) {
+		testForceSuitesCipherSuiteInclusion(t, VersionTLS12, []uint16{
+			TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+			TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA,
+			0x0A0A, // a GREASE cipher suite
+			0x00FF, // renegotiation
+		})
+	})
+	t.Run("TLSv11GreaseReneg", func(t *testing.T) {
+		testForceSuitesCipherSuiteInclusion(t, VersionTLS11, []uint16{
+			TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
+			TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+			TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA,
+			0x0A0A, // a GREASE cipher suite
+			0x00FF, // renegotiation
+		})
+	})
+}
+
+func testForceSuitesCipherSuiteInclusion(t *testing.T, tlsVersion uint16, expectedSuites []uint16) {
+	c, s := localPipe(t)
+	defer s.Close()
+
+	go func() {
+		client := Client(c, &Config{
+			InsecureSkipVerify: true,
+			CipherSuites:       expectedSuites,
+			ForceSuites:        true,
+			MaxVersion:         tlsVersion,
+		})
+		client.Handshake()
+		c.Close()
+	}()
+
+	var header [5]byte
+	if _, err := io.ReadFull(s, header[:]); err != nil {
+		t.Fatal(err)
+	}
+	recordLen := int(header[3])<<8 | int(header[4])
+
+	record := make([]byte, recordLen)
+	if _, err := io.ReadFull(s, record); err != nil {
+		t.Fatal(err)
+	}
+
+	var m clientHelloMsg
+	if !m.unmarshal(record) {
+		t.Fatal("failed to unmarshal ClientHello")
+	}
+
+	if !reflect.DeepEqual(m.cipherSuites, expectedSuites) {
+		t.Fatalf("cipher suites in ClientHello = %#v, want %#v", m.cipherSuites, expectedSuites)
+	}
+}
